@@ -1,0 +1,42 @@
+name: Go
+
+on:
+  push:
+    tags:
+    - 'v*' # i.e. v1.0, v20.15.10
+
+jobs:
+  build:
+    name: Build And Upload Release Asset
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - name: Build
+      run: |
+        make
+        zip --junk-paths inspecquery.zip inspecquery*
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} 
+        asset_path: ./inspecquery.zip
+        asset_name: inspecquery.zip
+        asset_content_type: application/zip
