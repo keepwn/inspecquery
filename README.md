@@ -6,6 +6,13 @@ You can exec any InSpec profile by querying `inspec` table easily.
 
 **For improving performance, any profile's result will be cached before expiry (1 minute).**
 
+## Features
+
+- [x] Support execute InSpec tests
+- [x] Support local and remote profile
+- [x] Support special any controls
+- [x] Support cache test result (1 minute)
+
 ## Requirement
 
 - Osquery
@@ -36,7 +43,7 @@ osquery>
 CREATE TABLE inspec(
     `profile_path` TEXT,
     `group` TEXT,
-    `id` TEXT,
+    `control` TEXT,
     `title` TEXT,
     `desc` TEXT,
     `description` TEXT,
@@ -49,14 +56,24 @@ CREATE TABLE inspec(
 
 you can set profile_path to any local or remote profile:
 
-- profile_path = "/root/cis-dil-benchmark-master"
-- profile_path = "https://github.com/dev-sec/cis-dil-benchmark"
+```sql
+select * from inspec profile_path = "/root/cis-dil-benchmark-master"
+select * from inspec profile_path = "https://github.com/dev-sec/cis-dil-benchmark"
+```
+
+you also can set control to run, and ignore all other tests:
+
+```sql
+... and control = "cis-dil-benchmark-1.1.1.1"
+... and control IN ("cis-dil-benchmark-1.1.1.1","cis-dil-benchmark-1.1.1.3")
+... and control LIKE "cis-dil-benchmark-1.1.1%"
+```
 
 ```bash
 osquery> .mode pretty
 osquery> select `group`,id,title,impact,result from inspec where profile_path = "/root/cis-dil-benchmark-master" limit 10;
 +------------------------------+---------------------------+-----------------------------------------------------+--------+--------+
-| group                        | id                        | title                                               | impact | result |
+| group                        | control                   | title                                               | impact | result |
 +------------------------------+---------------------------+-----------------------------------------------------+--------+--------+
 | 1.1 Filesystem Configuration | cis-dil-benchmark-1.1.1.1 | Ensure mounting of cramfs filesystems is disabled   | 1      | failed |
 | 1.1 Filesystem Configuration | cis-dil-benchmark-1.1.1.2 | Ensure mounting of freevxfs filesystems is disabled | 1      | failed |
