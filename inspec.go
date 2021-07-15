@@ -95,9 +95,12 @@ func InspecExec(profile string, reportFile string) (InspecReport, error) {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() == 1 || exitError.ExitCode() == 2 || exitError.ExitCode() == 3 {
 				log.Println(fmt.Sprintf("exit code: %d", exitError.ExitCode()))
-				log.Println(fmt.Sprintf("exit str: %s", stderr.String()))
+				log.Println(fmt.Sprintf("err str: %s", stderr.String()))
 				return InspecReport{}, err
 			}
+		}
+		if stderr.String() != "" {
+			log.Println(fmt.Sprintf("err str: %s", stderr.String()))
 		}
 	}
 
