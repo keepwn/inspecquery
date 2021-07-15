@@ -104,10 +104,10 @@ func (r InspecReport) toRows() []map[string]string {
 
 		for _, c := range p.Controls {
 			row := map[string]string{
-				"group": controlsMap[c.ID].Title,
-				"id":    c.ID,
-				"title": c.Title,
-				"desc":  c.Desc,
+				"group":   controlsMap[c.ID].Title,
+				"control": c.ID,
+				"title":   c.Title,
+				"desc":    c.Desc,
 			}
 
 			if len(c.Descriptions) > 0 {

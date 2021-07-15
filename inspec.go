@@ -23,13 +23,38 @@ func InspecColumns() []table.ColumnDefinition {
 	return []table.ColumnDefinition{
 		table.TextColumn("profile_path"),
 		table.TextColumn("group"),
-		table.TextColumn("id"),
+		table.TextColumn("control"),
 		table.TextColumn("title"),
 		table.TextColumn("desc"),
 		table.TextColumn("description"),
 		table.TextColumn("impact"),
 		table.TextColumn("result"),
 	}
+}
+
+type ControlParam interface {
+	ToString() string
+}
+
+type DefaultControlParam struct {
+	Control string
+}
+
+func (p DefaultControlParam) ToString() string {
+	return p.Control
+}
+
+type RegexControlParam struct {
+	ControlRegex string
+}
+
+func (p RegexControlParam) ToString() string {
+	// escape
+	// must remove %
+	reg := regexp.MustCompile("[^a-zA-Z0-9._-]+")
+	regexStr := reg.ReplaceAllString(p.ControlRegex, "")
+
+	return fmt.Sprintf("/%s/", regexStr)
 }
 
 func InspecGenerate(ctx context.Context, queryContext table.QueryContext) ([]map[string]string, error) {
@@ -40,6 +65,29 @@ func InspecGenerate(ctx context.Context, queryContext table.QueryContext) ([]map
 
 	reportPath := filepath.Join(tmpDir, "report.json")
 
+	var controlParam ControlParam
+
+	// eg. where control = 'control-1.1'
+	if cnstList, ok := queryContext.Constraints["control"]; ok {
+		for _, cnst := range cnstList.Constraints {
+			// eg. where control = 'control-1.1'
+			// eg. where control IN ('control-1.1')
+			// eg. where control IN ('control-1.1', 'control-1.2')
+			// 	   Osquery will execute with different expression twice
+			if cnst.Operator == table.OperatorEquals {
+				controlParam = &DefaultControlParam{Control: cnst.Expression}
+				break
+			}
+			// eg. where control like 'control-1.1%'
+			// eg. where control like '%control-1.1'
+			// eg. where control like '%control-1.1%'
+			if cnst.Operator == table.OperatorLike {
+				controlParam = &RegexControlParam{ControlRegex: cnst.Expression}
+				break
+			}
+		}
+	}
+
 	if cnstList, ok := queryContext.Constraints["profile_path"]; ok {
 		for _, cnst := range cnstList.Constraints {
 			if cnst.Operator == table.OperatorEquals {
@@ -48,20 +96,25 @@ func InspecGenerate(ctx context.Context, queryContext table.QueryContext) ([]map
 				reg := regexp.MustCompile("[^a-zA-Z0-9:/._-]+")
 				profilePath := reg.ReplaceAllString(cnst.Expression, "")
 
-				log.Println("profile: ", profilePath)
-
 				// get from cache
-				if report, found := c.Get(profilePath); found {
-					return report.(InspecReport).toRows(), nil
+				cacheKey := profilePath
+				if controlParam != nil {
+					cacheKey += "::" + controlParam.ToString()
 				}
 
-				result, err := InspecExec(profilePath, reportPath)
+				if report, found := c.Get(cacheKey); found {
+					log.Println(fmt.Sprintf("profile: %s, result from cached [%s]", profilePath, cacheKey))
+					return report.(InspecReport).toRows(), nil
+				}
+				log.Println("profile: ", profilePath)
+
+				result, err := InspecExec(profilePath, reportPath, controlParam)
 				if err != nil {
 					return nil, err
 				}
 
 				// put to cache
-				c.Set(profilePath, result, cache.DefaultExpiration)
+				c.Set(cacheKey, result, cache.DefaultExpiration)
 
 				return result.toRows(), nil
 			}
@@ -77,7 +130,7 @@ func IsInspecExists() bool {
 	return true
 }
 
-func InspecExec(profile string, reportFile string) (InspecReport, error) {
+func InspecExec(profile string, reportFile string, controlParam ControlParam) (InspecReport, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -87,7 +140,26 @@ func InspecExec(profile string, reportFile string) (InspecReport, error) {
 	}
 
 	// exec
-	cmd := exec.Command("inspec", "exec", profile, fmt.Sprintf("--reporter=json:%s", reportFile), "--chef-license=accept-silent")
+	var cmd *exec.Cmd
+	if controlParam == nil {
+		cmd = exec.Command(
+			"inspec",
+			"exec",
+			profile,
+			fmt.Sprintf("--reporter=json:%s", reportFile),
+			"--chef-license=accept-silent",
+		)
+	} else {
+		cmd = exec.Command(
+			"inspec",
+			"exec",
+			profile,
+			fmt.Sprintf("--reporter=json:%s", reportFile),
+			fmt.Sprintf("--controls=%s", controlParam.ToString()),
+			"--chef-license=accept-silent",
+		)
+	}
+
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
