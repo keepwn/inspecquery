@@ -43,8 +43,9 @@ func InspecGenerate(ctx context.Context, queryContext table.QueryContext) ([]map
 	if cnstList, ok := queryContext.Constraints["profile_path"]; ok {
 		for _, cnst := range cnstList.Constraints {
 			if cnst.Operator == table.OperatorEquals {
+				// escape
 				// only local path or remote path
-				reg := regexp.MustCompile("[^a-zA-Z0-9:/.-]+|(\\.\\./)+")
+				reg := regexp.MustCompile("[^a-zA-Z0-9:/._-]+")
 				profilePath := reg.ReplaceAllString(cnst.Expression, "")
 
 				log.Println("profile: ", profilePath)
